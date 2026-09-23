@@ -120,8 +120,10 @@ with tab_city:
         state_filter = st.selectbox("State", ["All"] + states_list, key="city_state")
     city_pool = stats if state_filter == "All" else stats[stats["State"] == state_filter]
     city_options = sorted((city_pool["City"] + ", " + city_pool["State"]).tolist())
+    default_city = "Sarasota, FL"
+    default_city_index = city_options.index(default_city) if default_city in city_options else 0
     with col_f2:
-        city_choice = st.selectbox("City (type to search)", city_options, key="city_pick")
+        city_choice = st.selectbox("City (type to search)", city_options, index=default_city_index, key="city_pick")
 
     if city_choice:
         city_name, state_po = city_choice.rsplit(", ", 1)
