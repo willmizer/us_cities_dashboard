@@ -148,7 +148,7 @@ with tab_city:
                 fig.add_bar(x=v["year"], y=v["blue votes"], name="Democrat", marker_color="#3b82f6")
                 fig.add_bar(x=v["year"], y=v["red votes"], name="Republican", marker_color="#ef4444")
                 fig.update_layout(barmode="stack", height=320, margin=dict(l=10, r=10, t=10, b=10))
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
             else:
                 st.info("No election data for this city.")
         with ch2:
@@ -162,7 +162,7 @@ with tab_city:
                 fig.add_scatter(x=yrs, y=incomes, name="Income", line=dict(color="#10b981", width=3))
                 fig.add_scatter(x=yrs, y=homes, name="Home Value", line=dict(color="#3b82f6", width=3))
                 fig.update_layout(height=320, margin=dict(l=10, r=10, t=10, b=10))
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
             else:
                 st.info("No historical trend data for this city.")
 
@@ -174,7 +174,7 @@ with tab_city:
             fig = px.pie(names=["White", "Black", "Hispanic", "Asian", "Other"], values=race_vals,
                          color_discrete_sequence=["#e4e4e7", "#6366f1", "#f59e0b", "#10b981", "#ef4444"])
             fig.update_layout(height=320, margin=dict(l=10, r=10, t=10, b=10))
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
         with ch4:
             st.markdown("**Age & Gender Distribution**")
             labels = [b[1] for b in AGE_BUCKETS]
@@ -184,7 +184,7 @@ with tab_city:
             fig.add_bar(x=labels, y=m, name="Male", marker_color="#3b82f6")
             fig.add_bar(x=labels, y=f, name="Female", marker_color="#d946ef")
             fig.update_layout(height=320, margin=dict(l=10, r=10, t=10, b=10))
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
 # ---------------------------------------------------------------- State Rankings
 with tab_state:
