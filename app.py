@@ -129,7 +129,14 @@ with tab_city:
         c5.metric("Remote Work", f"{row['pct_wfh']:.1f}%" if pd.notna(row["pct_wfh"]) else "-")
         if lv is not None and lv["total"] > 0:
             pct = lv["dem_pct"] if lv["winner"] == "Democrat" else lv["rep_pct"]
-            c6.metric(f"Latest Election ({int(lv['year'])})", f"{lv['winner']} {pct:.0f}%")
+            party_color = "#3b82f6" if lv["winner"] == "Democrat" else "#ef4444"
+            with c6:
+                st.caption(f"Latest Election ({int(lv['year'])})")
+                st.markdown(
+                    f"<span style='font-size:1.75rem;font-weight:600;color:{party_color};'>"
+                    f"{lv['winner']} {pct:.0f}%</span>",
+                    unsafe_allow_html=True,
+                )
         else:
             c6.metric("Latest Election", "N/A")
 
