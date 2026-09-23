@@ -10,6 +10,8 @@ st.set_page_config(page_title="US Cities: Elections vs. Census", layout="wide")
 # still shows, but strip every other Plotly tool (zoom, pan, select, download, etc).
 PLOTLY_CONFIG = {
     "displaylogo": False,
+    "scrollZoom": False,
+    "doubleClick": False,
     "modeBarButtonsToRemove": [
         "zoom2d", "pan2d", "select2d", "lasso2d",
         "zoomIn2d", "zoomOut2d", "autoScale2d", "resetScale2d",
@@ -17,6 +19,12 @@ PLOTLY_CONFIG = {
         "toggleSpikelines",
     ],
 }
+
+
+def render_chart(fig, **kwargs):
+    """View + fullscreen-expand only: no drag-zoom/pan, no legend toggling, no other controls."""
+    fig.update_layout(dragmode=False, legend=dict(itemclick=False, itemdoubleclick=False))
+    st.plotly_chart(fig, config=PLOTLY_CONFIG, **kwargs)
 
 st.markdown(
     """
@@ -162,7 +170,7 @@ with tab_city:
                 fig.add_bar(x=v["year"], y=v["blue votes"], name="Democrat", marker_color="#3b82f6")
                 fig.add_bar(x=v["year"], y=v["red votes"], name="Republican", marker_color="#ef4444")
                 fig.update_layout(barmode="stack", height=320, margin=dict(l=10, r=10, t=10, b=10))
-                st.plotly_chart(fig, use_container_width=True, config=PLOTLY_CONFIG)
+                render_chart(fig, use_container_width=True)
             else:
                 st.info("No election data for this city.")
         with ch2:
@@ -176,7 +184,7 @@ with tab_city:
                 fig.add_scatter(x=yrs, y=incomes, name="Income", line=dict(color="#10b981", width=3))
                 fig.add_scatter(x=yrs, y=homes, name="Home Value", line=dict(color="#3b82f6", width=3))
                 fig.update_layout(height=320, margin=dict(l=10, r=10, t=10, b=10))
-                st.plotly_chart(fig, use_container_width=True, config=PLOTLY_CONFIG)
+                render_chart(fig, use_container_width=True)
             else:
                 st.info("No historical trend data for this city.")
 
@@ -188,7 +196,7 @@ with tab_city:
             fig = px.pie(names=["White", "Black", "Hispanic", "Asian", "Other"], values=race_vals,
                          color_discrete_sequence=["#e4e4e7", "#6366f1", "#f59e0b", "#10b981", "#ef4444"])
             fig.update_layout(height=320, margin=dict(l=10, r=10, t=10, b=10))
-            st.plotly_chart(fig, use_container_width=True, config=PLOTLY_CONFIG)
+            render_chart(fig, use_container_width=True)
         with ch4:
             st.markdown("**Age & Gender Distribution**")
             labels = [b[1] for b in AGE_BUCKETS]
@@ -198,7 +206,7 @@ with tab_city:
             fig.add_bar(x=labels, y=m, name="Male", marker_color="#3b82f6")
             fig.add_bar(x=labels, y=f, name="Female", marker_color="#d946ef")
             fig.update_layout(height=320, margin=dict(l=10, r=10, t=10, b=10))
-            st.plotly_chart(fig, use_container_width=True, config=PLOTLY_CONFIG)
+            render_chart(fig, use_container_width=True)
 
 # ---------------------------------------------------------------- State Rankings
 with tab_state:
