@@ -32,7 +32,7 @@ can skip straight to the dashboard.
 
 ## Streamlit dashboard (`app.py`)
 
-[Live demo](#) <!-- STREAMLIT_URL_TODO -->
+[Live demo](https://us-cities-dashboard.streamlit.app/)
 
 ```bash
 pip install -r requirements.txt
