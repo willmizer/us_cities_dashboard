@@ -6,7 +6,7 @@ __pycache__/
 .env
 .DS_Store
 
-# Large intermediate/full pipeline outputs, not needed by app.py or web/ —
-# regenerate via clean_statistics.py if needed (see README).
+# Large intermediate/full pipeline outputs, not needed by app.py or web/.
+# Regenerate via clean_statistics.py if needed (see README).
 final_us_cities_statistics.csv
 city_statistics/us_cities_statistics_2012_2024.csv

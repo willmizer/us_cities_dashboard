@@ -55,8 +55,7 @@ states_project/
 │   └── final_city_election_data.csv
 ├── clean_statistics.py                 # Joins election + census data, builds dashboard export
 ├── web/
-│   ├── index.html                      # Original static HTML/Chart.js dashboard
-│   └── dashboard_stats.csv             # Slim per-city export used by both dashboards
+│   └── dashboard_stats.csv             # Slim per-city export used by the dashboard
 └── requirements.txt
 ```
 
@@ -72,15 +71,6 @@ streamlit run app.py
 ```
 
 No API key needed to run the dashboard: it reads the already-committed `web/dashboard_stats.csv` and `election_data/final_city_election_data.csv`.
-
-### Original static dashboard
-
-A dependency-free static HTML + Chart.js version is kept in `web/` as the original. It auto-loads the same two CSVs, but browsers block `fetch()` from `file://`, so serve it over HTTP from the repo root:
-
-```bash
-python3 -m http.server 8000
-# then open http://localhost:8000/web/
-```
 
 ## Future Improvements
 

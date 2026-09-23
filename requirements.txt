@@ -1,11 +1,8 @@
-# US cities: elections vs. census statistics — data pipeline dependencies (Python 3.12).
+# US cities: elections vs. census statistics. Data pipeline dependencies (Python 3.12).
 #
 #   python3.12 -m venv .venv
 #   source .venv/bin/activate        # Windows: .venv\Scripts\activate
 #   pip install -r requirements.txt
-#
-# The .venv/ currently in the repo is a broken leftover from another machine —
-# delete and recreate as above.
 
 # election_data/election_data.py, election_data/city_county_filter.py,
 # city_statistics/city_data_statistics_2012_2024.py, clean_statistics.py
@@ -14,9 +11,6 @@ numpy>=1.24.0
 requests
 python-dotenv
 
-# app.py — the interactive Streamlit dashboard
+# app.py: the interactive Streamlit dashboard
 streamlit>=1.30.0
 plotly>=5.18.0
-
-# The original dashboard in web/ is static HTML + CDN JS (Chart.js, PapaParse,
-# Bootstrap) — no Python needed, still there, serve over HTTP (see README.md).
