@@ -6,6 +6,23 @@ import streamlit as st
 
 st.set_page_config(page_title="US Cities: Elections vs. Census", layout="wide")
 
+st.markdown(
+    """
+    <style>
+    @media (max-width: 768px) {
+        div[data-testid="stHorizontalBlock"] {
+            flex-direction: column;
+        }
+        div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"] {
+            width: 100% !important;
+            flex: 1 1 100% !important;
+        }
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 AGE_BUCKETS = [
     ("under_5", "0-4"), ("5_9", "5-9"), ("10_14", "10-14"), ("15_17", "15-17"),
     ("18_19", "18-19"), ("20", "20"), ("21", "21"), ("22_24", "22-24"),
@@ -79,7 +96,7 @@ st.title("US Cities: Elections vs. Census Statistics")
 st.caption(
     "Pairs 2000-2024 presidential election results with ACS census statistics "
     "(income, home value, age, race, education, employment) for ~26,800 US cities. "
-    "Originally a static HTML/Chart.js dashboard — rebuilt here as an interactive Streamlit app."
+    "Originally a static HTML/Chart.js dashboard, rebuilt here as an interactive Streamlit app."
 )
 
 tab_city, tab_state, tab_match = st.tabs(["City Intel", "State Rankings", "Ideal City Matcher"])
@@ -216,7 +233,7 @@ with tab_state:
         "pct_poverty": "Poverty %", "commute_min": "Commute (min)", "pct_bach_plus": "Bach+ %",
         "pct_no_college": "No College %", "winner": "Latest Vote",
     })
-    st.caption(f"{len(table)} cities match — sorted by {RANK_METRICS[metric_key]} "
+    st.caption(f"{len(table)} cities match, sorted by {RANK_METRICS[metric_key]} "
                f"({'ascending' if metric_key in SORT_LOW_TO_HIGH else 'descending'})")
     st.dataframe(show, use_container_width=True, hide_index=True)
 
