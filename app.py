@@ -1,10 +1,18 @@
+import os
+
 import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
-st.set_page_config(page_title="US Cities Explorer", layout="wide")
+from theme import BLUE, COLORWAY, RED, apply_theme, style_fig
+
+st.set_page_config(
+    page_title="US Cities Explorer",
+    page_icon=os.path.join(os.path.dirname(__file__), "favicon.png"),
+    layout="wide",
+)
 
 # Keep the modebar so Streamlit's own fullscreen-expand button (injected into it)
 # still shows, but strip every other Plotly tool (zoom, pan, select, download, etc).
@@ -23,25 +31,11 @@ PLOTLY_CONFIG = {
 
 def render_chart(fig, **kwargs):
     """View + fullscreen-expand only: no drag-zoom/pan, no legend toggling, no other controls."""
+    style_fig(fig)
     fig.update_layout(dragmode=False, legend=dict(itemclick=False, itemdoubleclick=False))
     st.plotly_chart(fig, config=PLOTLY_CONFIG, **kwargs)
 
-st.markdown(
-    """
-    <style>
-    @media (max-width: 768px) {
-        div[data-testid="stHorizontalBlock"] {
-            flex-direction: column;
-        }
-        div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"] {
-            width: 100% !important;
-            flex: 1 1 100% !important;
-        }
-    }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
+apply_theme(max_width="1320px")
 
 AGE_BUCKETS = [
     ("under_5", "0-4"), ("5_9", "5-9"), ("10_14", "10-14"), ("15_17", "15-17"),
@@ -162,7 +156,7 @@ with tab_city:
         c5.metric("Remote Work", f"{row['pct_wfh']:.1f}%" if pd.notna(row["pct_wfh"]) else "-")
         if lv is not None and lv["total"] > 0:
             pct = lv["dem_pct"] if lv["winner"] == "Democrat" else lv["rep_pct"]
-            party_color = "#3b82f6" if lv["winner"] == "Democrat" else "#ef4444"
+            party_color = BLUE if lv["winner"] == "Democrat" else RED
             with c6:
                 st.caption(f"Latest Election ({int(lv['year'])})")
                 st.markdown(
@@ -178,8 +172,8 @@ with tab_city:
             st.markdown("**Political Trend**")
             if len(v):
                 fig = go.Figure()
-                fig.add_bar(x=v["year"], y=v["blue votes"], name="Democrat", marker_color="#3b82f6")
-                fig.add_bar(x=v["year"], y=v["red votes"], name="Republican", marker_color="#ef4444")
+                fig.add_bar(x=v["year"], y=v["blue votes"], name="Democrat", marker_color=BLUE)
+                fig.add_bar(x=v["year"], y=v["red votes"], name="Republican", marker_color=RED)
                 fig.update_layout(barmode="stack", height=320, margin=dict(l=10, r=10, t=10, b=10))
                 render_chart(fig, use_container_width=True)
             else:
@@ -192,8 +186,8 @@ with tab_city:
             _, incomes = parse_series(row.get("Hist_Income", ""))
             if yrs:
                 fig = go.Figure()
-                fig.add_scatter(x=yrs, y=incomes, name="Income", line=dict(color="#10b981", width=3))
-                fig.add_scatter(x=yrs, y=homes, name="Home Value", line=dict(color="#3b82f6", width=3))
+                fig.add_scatter(x=yrs, y=incomes, name="Income", line=dict(color=COLORWAY[1], width=3))
+                fig.add_scatter(x=yrs, y=homes, name="Home Value", line=dict(color=BLUE, width=3))
                 fig.update_layout(height=320, margin=dict(l=10, r=10, t=10, b=10))
                 render_chart(fig, use_container_width=True)
             else:
@@ -205,7 +199,7 @@ with tab_city:
             race_vals = [row["Total_White"], row["Total_Black"], row["Total_Hispanic"], row["Total_Asian"],
                          (row["Total_Other_Race"] or 0) + (row["Total_Two_or_More_Races"] or 0)]
             fig = px.pie(names=["White", "Black", "Hispanic", "Asian", "Other"], values=race_vals,
-                         color_discrete_sequence=["#e4e4e7", "#6366f1", "#f59e0b", "#10b981", "#ef4444"])
+                         color_discrete_sequence=[COLORWAY[6], COLORWAY[0], COLORWAY[2], COLORWAY[1], COLORWAY[3]])
             fig.update_layout(height=320, margin=dict(l=10, r=10, t=10, b=10))
             render_chart(fig, use_container_width=True)
         with ch4:
@@ -214,8 +208,8 @@ with tab_city:
             m = [row.get(f"m_{b[0]}", 0) or 0 for b in AGE_BUCKETS]
             f = [row.get(f"f_{b[0]}", 0) or 0 for b in AGE_BUCKETS]
             fig = go.Figure()
-            fig.add_bar(x=labels, y=m, name="Male", marker_color="#3b82f6")
-            fig.add_bar(x=labels, y=f, name="Female", marker_color="#d946ef")
+            fig.add_bar(x=labels, y=m, name="Male", marker_color=BLUE)
+            fig.add_bar(x=labels, y=f, name="Female", marker_color=COLORWAY[5])
             fig.update_layout(height=320, margin=dict(l=10, r=10, t=10, b=10))
             render_chart(fig, use_container_width=True)
 
@@ -270,14 +264,27 @@ with tab_state:
     show = table[["City", "Total_Population", "Median_Income", "Median_Home_Value", "pct_wfh",
                   "pct_unemployment", "pct_poverty", "commute_min", "pct_bach_plus", "pct_no_college", "winner"]]
     show = show.rename(columns={
-        "City": "City", "Total_Population": "Population", "Median_Income": "Income",
-        "Median_Home_Value": "Home Val", "pct_wfh": "Remote Work %", "pct_unemployment": "Unemp %",
+        "City": "City", "Total_Population": "Population", "Median_Income": "Income ($)",
+        "Median_Home_Value": "Home Val ($)", "pct_wfh": "Remote Work %", "pct_unemployment": "Unemp %",
         "pct_poverty": "Poverty %", "commute_min": "Commute (min)", "pct_bach_plus": "Bach+ %",
         "pct_no_college": "No College %", "winner": "Latest Vote",
     })
     st.caption(f"{len(table)} cities match, sorted by {RANK_METRICS[metric_key]} "
                f"({'ascending' if metric_key in SORT_LOW_TO_HIGH else 'descending'})")
-    st.dataframe(show, use_container_width=True, hide_index=True)
+    st.dataframe(
+        show, use_container_width=True, hide_index=True,
+        column_config={
+            "Population": st.column_config.NumberColumn(format="localized"),
+            "Income ($)": st.column_config.NumberColumn(format="localized"),
+            "Home Val ($)": st.column_config.NumberColumn(format="localized"),
+            "Remote Work %": st.column_config.NumberColumn(format="%.1f"),
+            "Unemp %": st.column_config.NumberColumn(format="%.1f"),
+            "Poverty %": st.column_config.NumberColumn(format="%.1f"),
+            "Commute (min)": st.column_config.NumberColumn(format="%.1f"),
+            "Bach+ %": st.column_config.NumberColumn(format="%.1f"),
+            "No College %": st.column_config.NumberColumn(format="%.1f"),
+        },
+    )
 
 # ---------------------------------------------------------------- Ideal City Matcher
 PICKINESS = {  # how much of the vote the chosen party must win for a "perfect" political match
@@ -451,6 +458,12 @@ with tab_match:
 
             results = sorted(results, key=lambda x: x["Match Score"], reverse=True)[:50]
             st.caption(f"Top {len(results)} matches in {match_state}")
-            st.dataframe(pd.DataFrame(results), use_container_width=True, hide_index=True)
+            st.dataframe(
+                pd.DataFrame(results), use_container_width=True, hide_index=True,
+                column_config={
+                    "Population": st.column_config.NumberColumn(format="localized"),
+                    "Match Score": st.column_config.ProgressColumn(min_value=0, max_value=100, format="%.1f"),
+                },
+            )
     else:
         st.info("Configure your ideal city profile in the sidebar, then click **Find Matches**.")
