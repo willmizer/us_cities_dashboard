@@ -4,7 +4,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
-st.set_page_config(page_title="US Cities: Elections vs. Census", layout="wide")
+st.set_page_config(page_title="US Cities Explorer", layout="wide")
 
 # Keep the modebar so Streamlit's own fullscreen-expand button (injected into it)
 # still shows, but strip every other Plotly tool (zoom, pan, select, download, etc).
