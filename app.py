@@ -78,10 +78,14 @@ def load_stats():
     df["pct_unemployment"] = np.where((df["Unemployed_Count"] + df["Total_Workers"]) > 0,
                                        df["Unemployed_Count"] / (df["Unemployed_Count"] + df["Total_Workers"]) * 100, np.nan)
     df["commute_min"] = np.where(df["commuters"] > 0, df["Travel_Time_to_Work"] / df["commuters"], np.nan)
+    # Education counts are for adults 25+, so the denominator must be the 25+ population
+    # (summed from the age buckets), not total population, which understated both rates by ~30%.
+    adult_keys = [k for k, _ in AGE_BUCKETS[[k for k, _ in AGE_BUCKETS].index("25_29"):]]
+    df["pop_25plus"] = df[[f"{sx}_{k}" for k in adult_keys for sx in ("m", "f")]].sum(axis=1)
     bach_plus = df[["Edu_Bachelors", "Edu_Masters", "Edu_Professional", "Edu_Doctorate"]].sum(axis=1)
     no_col = df[["Edu_None", "Edu_HighSchool"]].sum(axis=1)
-    df["pct_bach_plus"] = np.where(df["Total_Population"] > 0, bach_plus / df["Total_Population"] * 100, np.nan)
-    df["pct_no_college"] = np.where(df["Total_Population"] > 0, no_col / df["Total_Population"] * 100, np.nan)
+    df["pct_bach_plus"] = np.where(df["pop_25plus"] > 0, bach_plus / df["pop_25plus"] * 100, np.nan)
+    df["pct_no_college"] = np.where(df["pop_25plus"] > 0, no_col / df["pop_25plus"] * 100, np.nan)
     for race in ["White", "Black", "Hispanic", "Asian"]:
         df[f"pct_{race.lower()}"] = np.where(df["Total_Population"] > 0, df[f"Total_{race}"] / df["Total_Population"] * 100, np.nan)
     other = df["Total_Other_Race"].fillna(0) + df["Total_Two_or_More_Races"].fillna(0)
@@ -97,6 +101,13 @@ def load_votes():
     v["total"] = v["blue votes"].fillna(0) + v["red votes"].fillna(0)
     v["dem_pct"] = np.where(v["total"] > 0, v["blue votes"] / v["total"] * 100, np.nan)
     v["rep_pct"] = np.where(v["total"] > 0, v["red votes"] / v["total"] * 100, np.nan)
+    # Some cities (mostly CT) have a second, all-zero row for the same election year that
+    # would otherwise be picked as the "latest" result. Keep the row with the most votes.
+    v = v.sort_values("total", ascending=False).drop_duplicates(["state_po", "city", "year"])
+    # The raw 2024 file has "TOTAL VOTES CAST" pseudo-rows that inflate "other votes", so ~2,900 cities
+    # (TX, WI, WV...) were labelled "Other" winners. Decide the winner on Democrat vs Republican only,
+    # matching how dem_pct / rep_pct are computed.
+    v["winner"] = np.where(v["blue votes"] >= v["red votes"], "Democrat", "Republican")
     return v.sort_values("year")
 
 
@@ -224,14 +235,16 @@ with tab_state:
     pop_sum, pov_sum = df["Total_Population"].sum(), df["Poverty_Count"].sum()
     lab_sum, unemp_sum = (df["Unemployed_Count"] + df["Total_Workers"]).sum(), df["Unemployed_Count"].sum()
     work_sum, wfh_sum = df["Total_Workers"].sum(), df["Worked_From_Home"].sum()
-    commuters_sum, time_sum = df["commuters"].sum(), (df["Travel_Time_to_Work"] * (df["commuters"] > 0)).sum()
+    has_commute = df["commuters"].gt(0) & df["Travel_Time_to_Work"].notna()  # numerator and denominator from the same cities
+    commuters_sum, time_sum = df.loc[has_commute, "commuters"].sum(), df.loc[has_commute, "Travel_Time_to_Work"].sum()
     k4.metric("Unemployment", f"{(unemp_sum/lab_sum*100):.1f}%" if lab_sum else "-")
     k5.metric("Remote Work", f"{(wfh_sum/work_sum*100):.1f}%" if work_sum else "-")
     k6.metric("Avg Commute", f"{(time_sum/commuters_sum):.0f}m" if commuters_sum else "-")
     k7.metric("Poverty Rate", f"{(pov_sum/pop_sum*100):.1f}%" if pop_sum else "-")
 
     f1, f2, f3 = st.columns(3)
-    min_pop = f1.number_input("Min Population", min_value=0, value=0, step=1000)
+    min_pop = f1.number_input("Min Population", min_value=0, value=1000, step=1000, format="%d",
+                              help="Steps by 1,000, or type any exact number.")
     party = f2.selectbox("Party Filter", ["Show All", "Republican Only", "Democrat Only"])
     metric_key = f3.selectbox("Primary Ranking Metric", list(RANK_METRICS.keys()),
                                format_func=lambda k: RANK_METRICS[k])
@@ -267,23 +280,87 @@ with tab_state:
     st.dataframe(show, use_container_width=True, hide_index=True)
 
 # ---------------------------------------------------------------- Ideal City Matcher
+PICKINESS = {  # how much of the vote the chosen party must win for a "perfect" political match
+    "Not too picky (50%+)": 50.0,
+    "Pretty picky (65%+)": 65.0,
+    "Super picky (75%+)": 75.0,
+}
+BUCKET_LABELS = ["Lowest", "Low", "Middle", "High", "Highest"]
+CAP_LABELS = ["Very low", "Low", "Moderate", "Not picky"]
+BUCKET_Q = [0.0, 0.2, 0.4, 0.6, 0.8, 1.0]  # quintile edges
+CAP_Q = [0.2, 0.4, 0.6, 0.8]                 # "max" ceilings for poverty
+MIN_CITIES_FOR_BUCKETS = 10
+
+
+def money(x):
+    return f"${x/1000:,.0f}k" if x < 1e6 else f"${x/1e6:.2f}M"
+
+
+def build_buckets(values, fmt, capped=False):
+    """Turn a state's city values into labelled (label -> (lo, hi)) buckets using quantiles.
+
+    Range buckets (income, home, remote work, commute) are quintiles of the state's cities.
+    Capped buckets (poverty) are ceilings: "at or below" the 20th/40th/60th/80th percentile.
+    """
+    vals = values.dropna()
+    if len(vals) < MIN_CITIES_FOR_BUCKETS:
+        return {}
+    out = {}
+    if capped:
+        for lab, q in zip(CAP_LABELS, CAP_Q):
+            hi = vals.quantile(q)
+            out[f"{lab} (up to {fmt(hi)})"] = (-np.inf, hi)
+    else:
+        edges = [vals.quantile(q) for q in BUCKET_Q]
+        for i, lab in enumerate(BUCKET_LABELS):
+            lo, hi = (-np.inf if i == 0 else edges[i]), (np.inf if i == 4 else edges[i + 1])
+            if i == 0:
+                rng = f"under {fmt(hi)}"
+            elif i == 4:
+                rng = f"{fmt(lo)}+"
+            else:
+                rng = f"{fmt(lo)} - {fmt(hi)}"
+            out[f"{lab} ({rng})"] = (lo, hi)
+    return out
+
+
+def bucket_penalty(val, lo, hi, spread):
+    """0 inside the bucket; outside it grows with distance from the nearest edge, relative to
+    the state's typical spread (10th-90th percentile), capped at 1. Missing data = full penalty."""
+    if pd.isna(val):
+        return 1.0
+    if lo <= val <= hi:
+        return 0.0
+    dist = lo - val if val < lo else val - hi
+    return min(1.0, dist / spread) if spread > 0 else 1.0
+
+
 with tab_match:
     st.caption(
-        "**The Logic:** for each metric you target, we compute how far a city's actual number "
-        "deviates from your target on a percentage basis; the lower the average deviation, the "
-        "higher the match score. Small deviations in rates (poverty, unemployment) count more "
-        "heavily than the same percentage deviation in dollar amounts."
+        "**The Logic:** every choice you make is a *bucket* built from that state's own cities "
+        "(so \"High income\" in Mississippi differs from \"High income\" in Connecticut). A city "
+        "scores full marks on a metric if it lands inside your bucket, and loses points the further "
+        "outside it falls, measured against the state's typical spread. Your match score is 100 minus "
+        "the average penalty across everything you select."
     )
     match_state = st.selectbox("State", states_list, key="match_state")
+    state_all = stats[stats["State"] == match_state]
 
     with st.sidebar:
         st.markdown("### Define Ideal City")
         use_pop = st.checkbox("Min Population")
-        min_pop_target = st.number_input("Min Population", value=5000, disabled=not use_pop, key="mp") if use_pop else None
+        min_pop_target = st.number_input(
+            "Min Population", min_value=0, value=5000, step=100, format="%d",
+            key="mp", help="Steps by 100, or type any exact number.",
+        ) if use_pop else None
+
+        # bucket edges come from the state's cities that pass the population floor
+        bucket_pool = state_all if not use_pop else state_all[state_all["Total_Population"] >= min_pop_target]
 
         use_pol = st.checkbox("Target Political Lean")
-        pol_party = st.selectbox("Party", ["Democrat", "Republican"], disabled=not use_pol) if use_pol else None
-        pol_pct = st.number_input("Target %", value=50.0, disabled=not use_pol, key="pp") if use_pol else None
+        pol_party = st.selectbox("Party", ["Democrat", "Republican"]) if use_pol else None
+        pol_pick = st.selectbox("How picky?", list(PICKINESS.keys())) if use_pol else None
+        pol_pct = PICKINESS[pol_pick] if use_pol else None
 
         st.markdown("**Demographic focus**")
         use_div = st.checkbox("High Diversity (Balanced)")
@@ -293,17 +370,26 @@ with tab_match:
         use_asian = st.checkbox("Higher Asian Population")
 
         st.markdown("**Economic & social**")
-        targets = {}
-        if st.checkbox("Target Income ($)"):
-            targets["income"] = st.number_input("Income target", value=75000)
-        if st.checkbox("Target Home ($)"):
-            targets["home"] = st.number_input("Home target", value=350000)
-        if st.checkbox("Remote Work %"):
-            targets["wfh"] = st.number_input("Remote work target %", value=15.0)
-        if st.checkbox("Max Poverty %"):
-            targets["poverty"] = st.number_input("Poverty target %", value=10.0)
-        if st.checkbox("Target Commute (min)"):
-            targets["commute"] = st.number_input("Commute target (min)", value=20.0)
+        st.caption(f"Buckets are based on {len(bucket_pool):,} cities in {match_state}.")
+        # key -> (checkbox label, column, formatter, capped?, dot-label)
+        BUCKET_SPECS = {
+            "income": ("Target Income", "Median_Income", money, False),
+            "home": ("Target Home Value", "Median_Home_Value", money, False),
+            "wfh": ("Remote Work %", "pct_wfh", lambda x: f"{x:.1f}%", False),
+            "poverty": ("Max Poverty %", "pct_poverty", lambda x: f"{x:.1f}%", True),
+            "commute": ("Target Commute", "commute_min", lambda x: f"{x:.0f} min", False),
+        }
+        targets = {}  # key -> (lo, hi)
+        for key, (label, col, fmt, capped) in BUCKET_SPECS.items():
+            if st.checkbox(label):
+                buckets = build_buckets(bucket_pool[col], fmt, capped)
+                if not buckets:
+                    st.caption(f"Not enough cities with {label.lower()} data - lower the min population.")
+                    continue
+                default = list(buckets)[1 if capped else 2]  # Low ceiling / Middle range
+                pick = st.selectbox(label, list(buckets), index=list(buckets).index(default), key=f"b_{key}",
+                                    label_visibility="collapsed")
+                targets[key] = buckets[pick]
 
         run = st.button("Find Matches", type="primary")
 
@@ -311,66 +397,60 @@ with tab_match:
     if run:
         if not targets and not use_pol and not any_demo:
             st.warning("Select at least one metric in the sidebar.")
+        elif bucket_pool.empty:
+            st.warning("No cities meet that population floor.")
         else:
-            pool = stats[stats["State"] == match_state].copy()
-            if use_pop:
-                pool = pool[pool["Total_Population"] >= min_pop_target]
-
-            col_map = {"income": "Median_Income", "home": "Median_Home_Value", "wfh": "pct_wfh",
-                       "poverty": "pct_poverty", "commute": "commute_min"}
+            pool = bucket_pool.copy()
+            col_map = {k: v[1] for k, v in BUCKET_SPECS.items()}
+            spreads = {k: (bucket_pool[c].quantile(0.9) - bucket_pool[c].quantile(0.1)) for k, c in col_map.items()}
 
             results = []
             for _, r in pool.iterrows():
                 total_diff, count = 0.0, 0
                 details = []
-                for key, tval in targets.items():
+                for key, (lo, hi) in targets.items():
                     cval = r[col_map[key]]
+                    total_diff += bucket_penalty(cval, lo, hi, spreads[key])
+                    count += 1
                     if pd.notna(cval):
-                        denom = tval if tval != 0 else 1
-                        diff = abs(cval - tval) / denom
-                        total_diff += diff
-                        count += 1
                         fmt = f"${cval:,.0f}" if key in ("income", "home") else f"{cval:.1f}"
                         details.append(f"{key.upper()}: {fmt}")
-                    else:
-                        total_diff += 2.0
-                        count += 1
 
                 if use_pol:
-                    rv = votes[(votes["city"] == r["City"]) & (votes["state_po"] == r["State"])]
                     city_pct = 0.0
-                    if len(rv):
-                        last = rv.sort_values("year").iloc[-1]
+                    if (r["State"], r["City"]) in latest_idx.index:
+                        last = latest_idx.loc[(r["State"], r["City"])]
                         if last["total"] > 0:
                             city_pct = last["dem_pct"] if pol_party == "Democrat" else last["rep_pct"]
-                    total_diff += abs(city_pct - pol_pct) / 100
+                    # one-sided: meeting or beating the threshold is a perfect match
+                    total_diff += max(0.0, pol_pct - city_pct) / pol_pct
                     count += 1
                     details.append(f"POL: {pol_party[:3]} {city_pct:.0f}%")
 
                 if any_demo:
+                    pop = r["Total_Population"] or 1
                     if use_div:
-                        pop = r["Total_Population"] or 1
                         fracs = [r["Total_White"] / pop, r["Total_Black"] / pop, r["Total_Hispanic"] / pop,
                                  r["Total_Asian"] / pop, ((r["Total_Other_Race"] or 0) + (r["Total_Two_or_More_Races"] or 0)) / pop]
-                        diversity = 1 - sum(x * x for x in fracs)
+                        diversity = 1 - sum(x * x for x in np.nan_to_num(fracs))
                         total_diff += (1 - diversity)
                         count += 1
                         details.append(f"DivScore: {diversity:.2f}")
                     for flag, col, label in [(use_white, "pct_white", "White"), (use_black, "pct_black", "Black"),
                                               (use_hisp, "pct_hispanic", "Hisp"), (use_asian, "pct_asian", "Asian")]:
                         if flag:
-                            val = r[col] or 0
+                            val = 0.0 if pd.isna(r[col]) else r[col]
                             total_diff += (100 - val) / 100
                             count += 1
                             details.append(f"{label}: {val:.1f}%")
 
                 if count > 0:
-                    avg_diff = total_diff / count
-                    score = max(0.0, 100 - avg_diff * 100)
-                    results.append({"City": r["City"], "Match Score": round(score, 1), "Details": " | ".join(details)})
+                    score = max(0.0, 100 - total_diff / count * 100)
+                    results.append({"City": r["City"], "Population": int(r["Total_Population"]),
+                                    "Match Score": round(score, 1), "Details": " | ".join(details)})
 
             results = sorted(results, key=lambda x: x["Match Score"], reverse=True)[:50]
-            st.caption(f"{len(results)} matches")
+            st.caption(f"Top {len(results)} matches in {match_state}")
             st.dataframe(pd.DataFrame(results), use_container_width=True, hide_index=True)
     else:
         st.info("Configure your ideal city profile in the sidebar, then click **Find Matches**.")

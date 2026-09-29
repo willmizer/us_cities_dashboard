@@ -75,7 +75,7 @@ No API key needed to run the dashboard: it reads the already-committed `web/dash
 ## Limitations
 
 - ACS Census data has a 1–3 year publication lag; figures reflect survey periods ending in 2022–2023, not present-day conditions.
-- Election results use county-level data mapped to cities — cities spanning multiple counties, or counties containing multiple cities, may have imprecise vote attribution at the city level.
+- **Political lean is county-level, not city-level.** County-level results were the only presidential election data available at the time of this project, so each city is assigned the results of the county it sits in. A city's "latest vote" and political trend therefore reflect its whole county (which is why vote totals for a small town can look far larger than its population). Cities spanning multiple counties, or counties containing multiple cities, may have imprecise attribution, and two cities in the same county will always show identical results.
 - City populations range from a few hundred to several million; direct comparisons across very different size tiers should be interpreted carefully.
 - The Ideal City Matcher uses equal-weight percentage-error scoring by default; it does not account for quality-of-life factors absent from the Census variables (crime, climate, school quality, walkability).
 - Coverage is limited to cities with FIPS codes that appear in both the Census ACS5 API and the MIT Election Lab dataset; some municipalities are absent or have incomplete records.
